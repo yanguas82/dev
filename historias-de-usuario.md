@@ -2,7 +2,9 @@
 
 **Plataforma:** EduScience — Plataforma educativa para el aprendizaje de Ciencias Naturales  
 **URL:** https://edu-science-jade.vercel.app/  
-**Fecha de relevamiento:** 2026-05-11
+**Institución configurada:** Institución Educativa Bello Horizonte  
+**Tecnología:** React SPA + Supabase (PostgreSQL + Storage + Realtime)  
+**Fecha de relevamiento:** 2026-05-11  
 
 ---
 
@@ -12,12 +14,12 @@
 2. [Autenticación y Acceso](#1-autenticación-y-acceso)
 3. [Dashboard / Panel Principal](#2-dashboard--panel-principal)
 4. [Gestión de Módulos](#3-gestión-de-módulos)
-5. [Gestión de Componentes](#4-gestión-de-componentes)
-6. [Gestión de Competencias](#5-gestión-de-competencias)
-7. [Gestión de Preguntas y Exámenes](#6-gestión-de-preguntas-y-exámenes)
-8. [Gestión de Estudiantes](#7-gestión-de-estudiantes)
-9. [Gestión de Docentes](#8-gestión-de-docentes)
-10. [Gestión de Grados](#9-gestión-de-grados)
+5. [Gestión de Competencias](#4-gestión-de-competencias)
+6. [Gestión de Preguntas](#5-gestión-de-preguntas)
+7. [Gestión de Componentes](#6-gestión-de-componentes)
+8. [Gestión de Grados](#7-gestión-de-grados)
+9. [Gestión de Estudiantes](#8-gestión-de-estudiantes)
+10. [Gestión de Docentes](#9-gestión-de-docentes)
 11. [Resultados y Reportes](#10-resultados-y-reportes)
 12. [Solicitudes de Reinicio de Evaluación](#11-solicitudes-de-reinicio-de-evaluación)
 13. [Notificaciones](#12-notificaciones)
@@ -31,9 +33,42 @@
 
 | Rol | Descripción |
 |-----|-------------|
-| **Administrador** | Acceso total al sistema: gestión de usuarios, módulos, configuración y reportes globales |
-| **Docente** | Gestión de módulos asignados, visualización de resultados de sus estudiantes, aprobación de solicitudes |
-| **Estudiante** | Realización de exámenes, visualización de sus propios resultados e historial |
+| **Administrador** (`admin`) | Acceso total e irrestricto al sistema: gestión de usuarios, módulos, configuración institucional y reportes globales |
+| **Docente** (`docente`) | Gestión pedagógica: módulos asignados, competencias, preguntas, estudiantes y solicitudes de repetición de su grado |
+| **Estudiante** (`estudiante`) | Acceso exclusivo a sus propias evaluaciones, historial y resultados |
+
+---
+
+## Esquema de la Base de Datos
+
+El sistema utiliza las siguientes tablas en Supabase (PostgreSQL):
+
+| Tabla | Descripción |
+|-------|-------------|
+| `profiles` | Perfil de todos los usuarios (nombre, apellido, avatar) |
+| `user_roles` | Asignación de rol a cada usuario |
+| `students` | Datos de estudiantes (documento, grado, foto) |
+| `teachers` | Datos de docentes (documento, teléfono, es director de curso) |
+| `teacher_modules` | Relación docente ↔ módulo asignado |
+| `grades` | Grados académicos (ej: 10A, 10B, 11A, 11B) |
+| `modules` | Módulos de competencias (nombre, icono, color, estado) |
+| `competencies` | Competencias dentro de módulos (con fechas, OVA y grados asignados) |
+| `competency_students` | Relación competencia ↔ estudiante |
+| `questions` | Preguntas de opción múltiple (4 opciones, respuesta correcta, puntaje) |
+| `question_components` | Componentes de clasificación (Entorno Vivo, Químico, Físico, CTS) |
+| `exam_attempts` | Intentos de examen (respuestas, puntaje, fecha) |
+| `retake_requests` | Solicitudes de repetición de prueba |
+| `document_types` | Tipos de documento (CC, TI, RC, PA, CE) |
+| `permissions_config` | Permisos personalizados por rol |
+| `institutions` | Datos institucionales y configuración visual |
+| `notifications` | Notificaciones del sistema |
+
+**Buckets de almacenamiento (Supabase Storage):**
+- `avatars` — Logos e imágenes de branding institucional
+- `banners` — Imágenes del carrusel de login
+- `ova-files` — Archivos OVA (materiales de estudio interactivos)
+- `question-images` — Imágenes opcionales para preguntas
+- `student-photos` — Fotos de perfil de estudiantes
 
 ---
 
@@ -45,593 +80,714 @@
 **para** acceder a mi espacio educativo personalizado según mi rol.
 
 **Criterios de aceptación:**
-- El sistema muestra un formulario con campos de correo y contraseña.
-- Al ingresar credenciales válidas, el sistema redirige al dashboard correspondiente al rol del usuario.
+- La pantalla de login muestra el logo institucional, nombre de la plataforma y slogan configurado.
+- Se muestran los banners configurables en un carrusel con título, subtítulo e imagen de fondo.
+- El formulario solicita correo electrónico (ej: `correo@ejemplo.com`) y contraseña (mínimo 6 caracteres).
+- Al ingresar credenciales válidas, el sistema redirige al dashboard del rol correspondiente.
 - Al ingresar credenciales incorrectas, se muestra un mensaje de error claro.
-- El sistema protege las rutas privadas; un usuario no autenticado es redirigido al login.
-- La sesión persiste entre recargas de página.
+- El pie de página muestra el texto de copyright configurable.
 
 ---
 
 ### HU-002 — Acceso restringido por rol
 **Como** sistema,  
 **quiero** controlar el acceso a las diferentes secciones según el rol del usuario,  
-**para** garantizar que cada usuario solo vea y opere las funcionalidades que le corresponden.
+**para** garantizar que cada actor solo opere las funcionalidades que le corresponden.
 
 **Criterios de aceptación:**
-- Un estudiante no puede acceder a rutas de administración (`/students`, `/teachers`, `/configuration`, etc.).
+- Un estudiante no puede acceder a rutas de administración (`/students`, `/teachers`, `/configuration`, `/permissions`, `/results`).
 - Un docente no puede acceder a rutas exclusivas del administrador (`/permissions`, `/configuration`).
 - Al intentar acceder a una ruta no autorizada, el sistema muestra un mensaje de "Acceso Restringido".
 - Las rutas inexistentes muestran una página de error 404.
+- La sesión persiste entre recargas de página.
 
 ---
 
-### HU-003 — Banners de bienvenida en el login
+### HU-003 — Personalización de la pantalla de login
 **Como** administrador,  
-**quiero** configurar imágenes de banner en la pantalla de inicio de sesión,  
-**para** personalizar la experiencia visual de la plataforma para los usuarios.
+**quiero** configurar la apariencia visual de la pantalla de inicio de sesión,  
+**para** reflejar la identidad de la institución educativa en el acceso a la plataforma.
 
 **Criterios de aceptación:**
-- El administrador puede agregar, editar y eliminar banners desde `/configuration`.
-- Cada banner tiene un título y una imagen.
-- Los banners se muestran en la pantalla de login en un carrusel o visualización destacada.
-- Los cambios se guardan con el botón "Guardar banners".
+- Se pueden configurar: logo institucional, nombre del software, slogan/descripción y texto de copyright.
+- Se pueden agregar, editar y eliminar banners del carrusel (cada banner tiene título, subtítulo e imagen).
+- Se puede configurar la velocidad de transición del carrusel de banners.
+- Los cambios se reflejan inmediatamente en la pantalla de login.
 
 ---
 
 ## 2. Dashboard / Panel Principal
 
-### HU-004 — Visualización del dashboard de administrador
+### HU-004 — Dashboard del administrador
 **Como** administrador,  
 **quiero** ver un panel de control con métricas globales del sistema,  
-**para** tener una visión general del estado de la plataforma educativa.
+**para** tener una visión general del desempeño académico de la institución.
 
 **Criterios de aceptación:**
-- El dashboard muestra el total de módulos activos.
-- El dashboard muestra el promedio general de puntaje de los estudiantes (en porcentaje).
-- El dashboard muestra el número total de intentos de examen realizados.
-- El dashboard presenta un gráfico de "Promedio por Grado".
-- El dashboard presenta un gráfico de "Rendimiento por Componente".
-- El dashboard presenta un gráfico de "Tendencia de Evaluaciones (Últimos 6 meses)".
+- El dashboard muestra tarjetas con: total de evaluaciones realizadas, módulos activos, promedio general (%), estudiantes aprobados (≥60%) y reprobados (<60%), y evaluaciones pendientes.
+- Se presentan gráficas de: Promedio por Grado, Evaluaciones por Grado, Tendencia Mensual y Preguntas por Competencia.
+- Los datos se actualizan en tiempo real mediante Supabase Realtime.
 
 ---
 
-### HU-005 — Visualización del dashboard del estudiante
-**Como** estudiante,  
-**quiero** ver un panel de bienvenida con acceso a mis evaluaciones disponibles,  
-**para** conocer rápidamente qué exámenes puedo realizar y mi estado general.
+### HU-005 — Dashboard del docente
+**Como** docente,  
+**quiero** ver un panel de control con métricas de los módulos y estudiantes a mi cargo,  
+**para** monitorear el desempeño de mis grupos.
 
 **Criterios de aceptación:**
-- El dashboard muestra un mensaje de bienvenida personalizado ("Bienvenido Estudiante").
-- El estudiante puede acceder desde el dashboard a sus exámenes disponibles.
-- Se muestran indicadores de progreso o puntajes recientes.
+- El dashboard muestra estadísticas filtradas por los módulos y grados asignados al docente.
+- Se muestran las mismas gráficas que el administrador pero limitadas a los datos propios.
+- Acceso a navegación rápida hacia gestión de módulos, estudiantes y resultados.
+
+---
+
+### HU-006 — Dashboard del estudiante
+**Como** estudiante,  
+**quiero** ver un panel de bienvenida con un resumen de mi actividad académica,  
+**para** conocer rápidamente mi estado y acceder a mis evaluaciones.
+
+**Criterios de aceptación:**
+- El dashboard muestra: pruebas realizadas, pruebas pendientes y promedio general.
+- Se presenta un botón "Ver Pruebas Disponibles" para acceder directamente a los exámenes.
+- Si no hay evaluaciones realizadas, se muestra el mensaje: "Aún no has realizado ninguna evaluación".
 
 ---
 
 ## 3. Gestión de Módulos
 
-### HU-006 — Listar módulos educativos
+### HU-007 — Listar módulos educativos
 **Como** administrador o docente,  
-**quiero** ver la lista de todos los módulos educativos disponibles,  
-**para** conocer la estructura del contenido de la plataforma.
+**quiero** ver la lista de todos los módulos de competencias disponibles,  
+**para** gestionar el contenido educativo de la plataforma.
 
 **Criterios de aceptación:**
-- La página `/modules` muestra todos los módulos con su nombre e ícono.
-- Los módulos pueden filtrarse o buscarse.
-- Cada módulo muestra información básica: nombre, ícono, estado (activo/inactivo).
+- La página `/modules` muestra todos los módulos con su nombre, icono, color e indicador de estado (activo/inactivo).
+- El administrador ve todos los módulos; el docente solo ve los módulos asignados a él.
+- Existe un campo de búsqueda por nombre de módulo.
+- Los módulos inactivos se distinguen visualmente de los activos.
 
 ---
 
-### HU-007 — Crear un nuevo módulo
+### HU-008 — Crear un nuevo módulo
 **Como** administrador,  
-**quiero** crear un nuevo módulo educativo con nombre e ícono personalizado,  
-**para** organizar el contenido educativo de la plataforma.
+**quiero** crear un nuevo módulo educativo con nombre, icono y color personalizados,  
+**para** organizar las competencias de Ciencias Naturales en la plataforma.
 
 **Criterios de aceptación:**
-- El formulario "Nuevo Módulo" permite ingresar nombre del módulo.
-- Se puede seleccionar un ícono representativo para el módulo.
-- Al guardar, el módulo aparece en la lista de módulos.
+- El formulario "Nuevo Módulo" solicita: nombre (obligatorio), descripción, icono (seleccionable de biblioteca visual con opciones como Libro, ADN, Brote, Cerebro, etc.) y color.
+- El color puede elegirse de una paleta predefinida, ingresarse como código HEX o generarse como degradado.
+- Al guardar, el módulo aparece en la lista con estado activo por defecto.
 - Se muestra un mensaje de éxito al crearse correctamente.
 
 ---
 
-### HU-008 — Editar un módulo existente
-**Como** administrador,  
-**quiero** editar la información de un módulo existente,  
+### HU-009 — Editar un módulo existente
+**Como** administrador o docente,  
+**quiero** editar la información de un módulo (nombre, descripción, icono, color),  
 **para** mantener actualizado el contenido educativo.
 
 **Criterios de aceptación:**
-- El administrador puede acceder a la edición desde la lista de módulos.
-- Puede modificar el nombre e ícono del módulo.
-- Los cambios se guardan con "Guardar cambios".
-- Se muestra confirmación de los cambios guardados.
+- Se pueden modificar todos los campos del módulo.
+- Los cambios se guardan con "Guardar cambios" y se confirman con un mensaje de éxito.
+- Los cambios son visibles de inmediato en la lista de módulos.
 
 ---
 
-### HU-009 — Eliminar un módulo
-**Como** administrador,  
-**quiero** eliminar un módulo que ya no sea relevante,  
-**para** mantener limpia y actualizada la estructura educativa.
+### HU-010 — Desactivar / Activar un módulo
+**Como** administrador o docente (con permiso),  
+**quiero** activar o desactivar un módulo,  
+**para** controlar qué contenido está disponible para los estudiantes sin eliminarlo.
 
 **Criterios de aceptación:**
+- El módulo desactivado deja de ser visible para los estudiantes.
+- El administrador puede reactivar un módulo en cualquier momento.
+- El cambio de estado se refleja inmediatamente.
+
+---
+
+### HU-011 — Eliminar un módulo
+**Como** administrador,  
+**quiero** eliminar un módulo que ya no sea relevante,  
+**para** mantener limpia la estructura educativa de la plataforma.
+
+**Criterios de aceptación:**
+- Solo el administrador puede eliminar módulos.
 - El sistema solicita confirmación antes de eliminar.
-- Al confirmar, el módulo se elimina y desaparece de la lista.
-- Si el módulo tiene competencias o estudiantes asociados, el sistema advierte sobre el impacto.
 - Se muestra un mensaje de éxito al eliminarse correctamente.
 
 ---
 
-### HU-010 — Ver detalle de un módulo
+### HU-012 — Ver detalle de un módulo
 **Como** administrador o docente,  
-**quiero** ver el detalle completo de un módulo,  
-**para** gestionar sus componentes y competencias asociadas.
+**quiero** ver el detalle de un módulo y sus competencias asociadas,  
+**para** gestionar el contenido pedagógico de cada área.
 
 **Criterios de aceptación:**
 - Al hacer clic en un módulo, se navega a `/modules/:moduleId`.
-- Se muestran los componentes y competencias del módulo.
-- Se puede navegar entre las competencias del módulo.
+- Se listan las competencias del módulo con su nombre, componente y estado.
+- Se puede crear y gestionar competencias desde esta vista.
 
 ---
 
-## 4. Gestión de Componentes
+## 4. Gestión de Competencias
 
-### HU-011 — Listar componentes del sistema
-**Como** administrador,  
-**quiero** ver todos los componentes de evaluación definidos en el sistema,  
-**para** entender cómo están organizadas las áreas temáticas de evaluación.
-
-**Criterios de aceptación:**
-- La página `/components` muestra todos los componentes disponibles.
-- Cada componente muestra su nombre.
-- Se indica si el componente está activo o inactivo.
-
----
-
-### HU-012 — Crear un nuevo componente
-**Como** administrador,  
-**quiero** crear un nuevo componente de evaluación,  
-**para** ampliar las categorías de evaluación disponibles en los exámenes.
-
-**Criterios de aceptación:**
-- El formulario "Nuevo Componente" permite ingresar el nombre del componente.
-- Al guardar, el componente aparece en la lista.
-- Se muestra un mensaje de éxito.
-
----
-
-### HU-013 — Editar y eliminar componentes
-**Como** administrador,  
-**quiero** editar o eliminar componentes existentes,  
-**para** mantener actualizada la taxonomía de evaluación.
-
-**Criterios de aceptación:**
-- Se puede editar el nombre de un componente.
-- Se puede eliminar un componente con confirmación previa.
-- Se muestra mensaje de éxito en cada operación.
-
----
-
-## 5. Gestión de Competencias
-
-### HU-014 — Ver competencias de un módulo
+### HU-013 — Listar competencias de un módulo
 **Como** administrador o docente,  
-**quiero** ver las competencias asociadas a un módulo específico,  
-**para** entender qué habilidades se evalúan en cada módulo.
+**quiero** ver las competencias asociadas a un módulo,  
+**para** gestionar las evaluaciones que los estudiantes deben realizar.
 
 **Criterios de aceptación:**
-- La ruta `/modules/:moduleId/competencies/:competencyId` muestra el detalle de una competencia.
-- Se muestran las preguntas asociadas a la competencia.
-- Se indica el número de preguntas y el puntaje total disponible.
+- Se muestran las competencias del módulo con: nombre, componente asignado, grados, fechas y estado.
+- Los módulos existentes tienen competencias de Biología (Entorno Vivo), Química (Entorno Químico) y Física (Entorno Físico).
 
 ---
 
-### HU-015 — Crear una nueva competencia
-**Como** administrador,  
+### HU-014 — Crear una competencia
+**Como** administrador o docente,  
 **quiero** crear una nueva competencia dentro de un módulo,  
-**para** definir los criterios de evaluación que los estudiantes deben demostrar.
+**para** definir un área de evaluación específica con su contexto pedagógico.
 
 **Criterios de aceptación:**
-- Se puede crear una competencia asignada a un módulo y componente específico.
-- Se puede asignar fecha de inicio y fin a la competencia/evaluación.
-- La competencia aparece disponible para los estudiantes del grado correspondiente.
+- El formulario solicita: nombre, descripción, componente (Entorno Vivo / Químico / Físico / CTS), fecha inicio, fecha fin, hora inicio.
+- Se pueden asignar uno o más grados a la competencia (ej: 10A, 10B, 11A, 11B).
+- Se puede subir un archivo OVA (Objeto Virtual de Aprendizaje: video o recurso interactivo) como material de estudio.
+- Al guardar, la competencia queda disponible para los estudiantes de los grados asignados.
 
 ---
 
-## 6. Gestión de Preguntas y Exámenes
+### HU-015 — Editar y desactivar una competencia
+**Como** administrador o docente,  
+**quiero** editar o desactivar una competencia,  
+**para** actualizar el contenido o controlar su disponibilidad.
 
-### HU-016 — Crear preguntas de opción múltiple
+**Criterios de aceptación:**
+- Se pueden editar todos los campos de la competencia.
+- Se puede desactivar para que los estudiantes no vean la competencia.
+- Los cambios se confirman con un mensaje de éxito.
+
+---
+
+### HU-016 — Eliminar una competencia
+**Como** administrador,  
+**quiero** eliminar una competencia,  
+**para** depurar evaluaciones obsoletas del sistema.
+
+**Criterios de aceptación:**
+- Solo el administrador puede eliminar competencias.
+- El sistema solicita confirmación previa.
+- Se muestra mensaje de éxito al completarse.
+
+---
+
+## 5. Gestión de Preguntas
+
+### HU-017 — Ver preguntas de una competencia
+**Como** administrador o docente,  
+**quiero** ver las preguntas configuradas para una competencia,  
+**para** revisar el banco de preguntas disponible para la evaluación.
+
+**Criterios de aceptación:**
+- La ruta `/modules/:moduleId/competencies/:competencyId` muestra el listado de preguntas.
+- Se muestran: número de orden, enunciado (o imagen si la tiene), opciones A/B/C/D, respuesta correcta, componente y puntaje.
+- Se indica el total de preguntas y el puntaje máximo acumulado.
+
+---
+
+### HU-018 — Crear una pregunta de opción múltiple
 **Como** administrador o docente,  
 **quiero** crear preguntas de opción múltiple para una competencia,  
-**para** evaluar el conocimiento de los estudiantes en Ciencias Naturales.
+**para** construir las evaluaciones de Ciencias Naturales.
 
 **Criterios de aceptación:**
-- El formulario "Nueva Pregunta" permite ingresar el enunciado de la pregunta.
-- Se pueden crear exactamente 4 opciones de respuesta (A, B, C, D).
-- Se selecciona cuál es la opción correcta.
-- Se puede asignar un puntaje por pregunta (valor por defecto: 5).
-- Se puede agregar una imagen ilustrativa a la pregunta.
-- Se asigna la pregunta a un componente.
+- El formulario "Nueva Pregunta" solicita: enunciado (obligatorio), imagen opcional (JPG/PNG/WebP, máx. 5 MB), 4 opciones de respuesta (A, B, C, D) y selección de la opción correcta.
+- Se asigna un puntaje por pregunta (valor por defecto: 5 o 10 puntos).
+- Se asocia a un componente (Entorno Vivo, Químico, Físico o CTS).
+- El número de pregunta es secuencial y obligatorio.
+- Se muestra mensaje de éxito al crearse.
 
 ---
 
-### HU-017 — Importar preguntas masivamente desde Excel
+### HU-019 — Importar preguntas masivamente desde Excel
 **Como** administrador,  
 **quiero** importar preguntas de forma masiva desde un archivo Excel,  
-**para** cargar eficientemente grandes cantidades de preguntas al sistema.
+**para** cargar eficientemente grandes bancos de preguntas al sistema.
 
 **Criterios de aceptación:**
-- La plataforma permite importar un archivo Excel con el formato correcto.
-- El archivo debe contener: número de pregunta, enunciado, 4 opciones (A, B, C, D), opción correcta y puntaje.
-- El sistema valida el formato de cada fila e informa errores específicos.
-- Las preguntas válidas se importan y las erróneas se muestran con advertencias.
-- Las instrucciones del formato están disponibles en la interfaz.
+- La plataforma provee una plantilla Excel descargable con el formato requerido.
+- El archivo debe incluir por fila: número de pregunta (secuencial), enunciado completo, 4 opciones (A, B, C, D), opción correcta (letra A/B/C/D) y puntaje (numérico, por defecto 5).
+- El sistema valida cada fila e informa errores específicos (opción inválida, puntaje no numérico, etc.).
+- Las filas válidas se importan; las erróneas se muestran con advertencias detalladas.
+- Las instrucciones de formato están visibles en la interfaz antes de importar.
 
 ---
 
-### HU-018 — Subir recursos multimedia a una competencia
+### HU-020 — Editar y eliminar preguntas
 **Como** administrador o docente,  
-**quiero** subir archivos PDF, PowerPoint o Video como material de apoyo a una competencia,  
-**para** que los estudiantes tengan recursos de estudio antes de realizar el examen.
+**quiero** editar o eliminar preguntas existentes,  
+**para** corregir errores o actualizar el banco de preguntas.
 
 **Criterios de aceptación:**
-- Se puede arrastrar o seleccionar un archivo PDF, PowerPoint o Video.
-- El archivo se asocia a la competencia seleccionada.
-- Se muestra un mensaje de éxito al subir el archivo correctamente.
-- Los estudiantes pueden acceder al recurso desde su vista de la competencia.
+- Se pueden modificar todos los campos de la pregunta, incluyendo imagen y opciones.
+- Se puede marcar una pregunta como inactiva sin eliminarla.
+- La eliminación requiere confirmación previa.
+- Los cambios se reflejan inmediatamente en los exámenes activos.
 
 ---
 
-### HU-019 — Realizar un examen
-**Como** estudiante,  
-**quiero** responder las preguntas de una competencia en un examen en línea,  
-**para** demostrar mi conocimiento y obtener una calificación.
+## 6. Gestión de Componentes
 
-**Criterios de aceptación:**
-- El estudiante accede al examen desde `/exam/:competencyId`.
-- Se muestran todas las preguntas de la competencia con sus opciones (A, B, C, D).
-- Las preguntas pueden incluir imágenes ilustrativas.
-- El sistema exige responder todas las preguntas antes de finalizar ("Debes responder todas las preguntas para finalizar").
-- Al finalizar, el sistema calcula el puntaje automáticamente (score/total_score × 100%).
-- El resultado se muestra inmediatamente: puntaje obtenido, total y porcentaje.
-- Aprobar requiere obtener 60% o más.
-
----
-
-### HU-020 — Ver mis exámenes disponibles (Estudiante)
-**Como** estudiante,  
-**quiero** ver la lista de exámenes que tengo disponibles para realizar,  
-**para** planificar mi preparación y no perder ninguna evaluación.
-
-**Criterios de aceptación:**
-- La página `/my-exams` muestra todos los exámenes disponibles para el estudiante.
-- Se indica el módulo, componente y fecha de disponibilidad de cada examen.
-- Se puede acceder directamente al examen desde esta vista.
-
----
-
-## 7. Gestión de Estudiantes
-
-### HU-021 — Listar estudiantes
-**Como** administrador o docente,  
-**quiero** ver la lista de estudiantes registrados en el sistema,  
-**para** gestionar su información y seguimiento académico.
-
-**Criterios de aceptación:**
-- La página `/students` muestra todos los estudiantes registrados.
-- Se muestra nombre, apellido, correo y grado de cada estudiante.
-- Se puede buscar estudiantes por nombre o correo.
-- Se puede filtrar por grado.
-
----
-
-### HU-022 — Registrar un nuevo estudiante
+### HU-021 — Listar componentes de clasificación
 **Como** administrador,  
-**quiero** registrar manualmente un nuevo estudiante en el sistema,  
-**para** habilitarlo a acceder a los exámenes de su grado.
+**quiero** ver todos los componentes de clasificación de preguntas,  
+**para** conocer cómo están organizadas las áreas temáticas de evaluación.
 
 **Criterios de aceptación:**
-- El formulario "Registrar Estudiante" solicita: nombre, apellido, correo electrónico y grado.
-- El correo debe ser único para cada estudiante.
-- Al registrar, el estudiante queda habilitado para iniciar sesión.
-- Se muestra mensaje de éxito al registrar correctamente.
+- La página `/components` muestra todos los componentes: Entorno Vivo, Entorno Químico, Entorno Físico y Ciencia, Tecnología y Sociedad (CTS).
+- Cada componente muestra nombre, descripción y estado (activo/inactivo).
 
 ---
 
-### HU-023 — Importar estudiantes masivamente desde Excel
+### HU-022 — Crear un componente
 **Como** administrador,  
-**quiero** importar una lista de estudiantes desde un archivo Excel,  
-**para** registrar eficientemente grupos completos de estudiantes.
+**quiero** crear un nuevo componente de clasificación,  
+**para** ampliar la taxonomía de evaluación según los lineamientos curriculares.
 
 **Criterios de aceptación:**
-- La plataforma permite importar un archivo Excel con datos de estudiantes.
-- El archivo debe contener: nombre, apellido y correo (único) de cada estudiante.
-- El sistema valida el formato y reporta errores por fila.
-- Los estudiantes válidos se registran y los erróneos se informan con advertencias.
-
----
-
-### HU-024 — Editar información de un estudiante
-**Como** administrador,  
-**quiero** editar los datos de un estudiante existente,  
-**para** mantener la información actualizada.
-
-**Criterios de aceptación:**
-- Se puede editar nombre, apellido, correo y grado del estudiante.
-- Los cambios se guardan correctamente.
-- Se muestra confirmación de los cambios.
-
----
-
-### HU-025 — Eliminar un estudiante
-**Como** administrador,  
-**quiero** eliminar un estudiante del sistema,  
-**para** remover registros que ya no sean necesarios.
-
-**Criterios de aceptación:**
-- El sistema solicita confirmación antes de eliminar.
-- Al confirmar, el estudiante es eliminado y no puede iniciar sesión.
+- El formulario solicita: nombre y descripción detallada del componente.
+- Al guardar, el componente queda disponible para asignarse a preguntas y competencias.
 - Se muestra mensaje de éxito.
 
 ---
 
-## 8. Gestión de Docentes
-
-### HU-026 — Listar docentes
+### HU-023 — Editar y eliminar componentes
 **Como** administrador,  
-**quiero** ver la lista de docentes registrados en el sistema,  
-**para** gestionar sus asignaciones y accesos.
+**quiero** editar o eliminar componentes de clasificación,  
+**para** mantener actualizada la taxonomía de evaluación.
 
 **Criterios de aceptación:**
-- La página `/teachers` muestra todos los docentes registrados.
-- Se muestra nombre, apellido, correo y grados asignados de cada docente.
-- Se puede buscar por nombre o correo.
+- Se pueden editar nombre y descripción del componente.
+- Se puede desactivar o eliminar con confirmación previa.
+- Se muestra mensaje de éxito en cada operación.
 
 ---
 
-### HU-027 — Registrar un nuevo docente
+## 7. Gestión de Grados
+
+### HU-024 — Listar grados académicos
+**Como** administrador,  
+**quiero** ver todos los grados académicos configurados en el sistema,  
+**para** gestionar la organización escolar de la institución.
+
+**Criterios de aceptación:**
+- La página `/grades` muestra todos los grados: 10A, 10B, 11A, 11B (y los que se agreguen).
+- Se muestra el nombre, descripción y estado de cada grado.
+
+---
+
+### HU-025 — Crear un nuevo grado
+**Como** administrador,  
+**quiero** crear un nuevo grado académico,  
+**para** ampliar la estructura escolar según las necesidades de la institución.
+
+**Criterios de aceptación:**
+- El formulario solicita: nombre del grado (ej: "10A") y descripción.
+- Al guardar, el grado queda disponible para asignarse a estudiantes y competencias.
+- Se muestra mensaje de éxito.
+
+---
+
+### HU-026 — Editar y eliminar grados
+**Como** administrador,  
+**quiero** editar o eliminar grados académicos,  
+**para** mantener actualizada la estructura escolar.
+
+**Criterios de aceptación:**
+- Se puede modificar nombre y descripción del grado.
+- Se puede desactivar o eliminar con confirmación previa.
+- Se muestra mensaje de éxito en cada operación.
+
+---
+
+## 8. Gestión de Estudiantes
+
+### HU-027 — Listar estudiantes
+**Como** administrador o docente,  
+**quiero** ver la lista de estudiantes registrados,  
+**para** gestionar su información y hacer seguimiento académico.
+
+**Criterios de aceptación:**
+- La página `/students` muestra todos los estudiantes con: nombre, apellido, correo, tipo de documento, número de documento, grado y estado (activo/inactivo).
+- Existe un campo de búsqueda por nombre, correo o número de documento.
+- El docente solo ve estudiantes de los grados a su cargo.
+
+---
+
+### HU-028 — Registrar un nuevo estudiante
+**Como** administrador o docente (con permiso),  
+**quiero** registrar manualmente un nuevo estudiante,  
+**para** habilitarlo a acceder a las evaluaciones de su grado.
+
+**Criterios de aceptación:**
+- El formulario "Registrar Estudiante" solicita: nombre (obligatorio), apellido (obligatorio), correo electrónico único (obligatorio), contraseña (mínimo 6 caracteres), tipo de documento (CC / TI / RC / PA / CE), número de documento (obligatorio), grado (obligatorio) y foto de perfil (opcional, JPG/PNG/WebP, máx. 5 MB).
+- Al registrar, se crea la cuenta de acceso del estudiante automáticamente.
+- El correo debe ser único en el sistema.
+- Se muestra mensaje de éxito al registrarse correctamente.
+
+---
+
+### HU-029 — Importar estudiantes masivamente desde Excel
+**Como** administrador,  
+**quiero** importar una lista de estudiantes desde un archivo Excel,  
+**para** registrar eficientemente grupos completos.
+
+**Criterios de aceptación:**
+- La plataforma provee una plantilla Excel descargable.
+- Campos obligatorios por fila: nombre, apellido, correo (único), contraseña, número de documento y grado.
+- El sistema valida el formato e informa errores por fila.
+- Los estudiantes válidos se registran y se crean sus cuentas de acceso.
+- Los erróneos se muestran con descripción del problema.
+
+---
+
+### HU-030 — Editar información de un estudiante
+**Como** administrador o docente (con permiso),  
+**quiero** editar los datos de un estudiante,  
+**para** mantener la información actualizada.
+
+**Criterios de aceptación:**
+- Se pueden editar todos los campos del estudiante, incluyendo grado y foto.
+- Los cambios se guardan y confirman con mensaje de éxito.
+
+---
+
+### HU-031 — Desactivar o eliminar un estudiante
+**Como** administrador,  
+**quiero** desactivar o eliminar un estudiante del sistema,  
+**para** gestionar bajas o transferencias.
+
+**Criterios de aceptación:**
+- Solo el administrador puede eliminar estudiantes; docentes solo pueden desactivar (con permiso).
+- Desactivar impide el acceso del estudiante sin borrar su historial.
+- Eliminar requiere confirmación previa.
+- Se muestra mensaje de éxito.
+
+---
+
+### HU-032 — Restablecer contraseña de un estudiante
+**Como** administrador o docente,  
+**quiero** restablecer la contraseña de un estudiante,  
+**para** ayudarlo a recuperar el acceso si la olvidó.
+
+**Criterios de aceptación:**
+- Existe la opción de restablecer contraseña desde el listado o detalle del estudiante.
+- Se puede establecer una nueva contraseña para el estudiante.
+- Se muestra confirmación al completarse el restablecimiento.
+
+---
+
+## 9. Gestión de Docentes
+
+### HU-033 — Listar docentes
+**Como** administrador,  
+**quiero** ver la lista de docentes registrados,  
+**para** gestionar el equipo docente de la institución.
+
+**Criterios de aceptación:**
+- La página `/teachers` muestra todos los docentes con: nombre, apellido, correo, teléfono, tipo y número de documento, módulos asignados, grado que dirige y estado.
+- Existe búsqueda por nombre, correo o número de documento.
+
+---
+
+### HU-034 — Registrar un nuevo docente
 **Como** administrador,  
 **quiero** registrar un nuevo docente en el sistema,  
 **para** habilitarlo a gestionar módulos y ver resultados de sus estudiantes.
 
 **Criterios de aceptación:**
-- El formulario "Nuevo Docente" solicita: nombre, apellido y correo.
-- Se pueden asignar uno o más grados al docente.
-- Se puede designar al docente como director de curso de un grado específico.
-- Al registrar, el docente puede iniciar sesión con sus credenciales.
+- El formulario solicita: nombre (obligatorio), apellido (obligatorio), correo (obligatorio), teléfono (formato +57 300 000 0000), tipo de documento, número de documento (obligatorio), contraseña, foto de perfil (opcional).
+- Se pueden asignar uno o más módulos al docente ("Selecciona los módulos que gestionará este docente").
+- Se puede designar al docente como director de curso marcando el checkbox "Es Director de Curso" y seleccionando el grado que dirige.
+- Al registrar, el docente puede iniciar sesión y ver solo sus módulos asignados.
 - Se muestra mensaje de éxito.
 
 ---
 
-### HU-028 — Editar y eliminar docentes
+### HU-035 — Editar un docente
 **Como** administrador,  
-**quiero** editar o eliminar la información de un docente,  
-**para** mantener actualizado el equipo docente en la plataforma.
+**quiero** editar los datos y asignaciones de un docente,  
+**para** reflejar cambios en el equipo pedagógico.
 
 **Criterios de aceptación:**
-- Se pueden editar todos los datos del docente incluyendo grados asignados.
-- Se puede cambiar la asignación de director de curso.
-- Se puede eliminar un docente con confirmación previa.
-- Se muestran mensajes de éxito en cada operación.
-
----
-
-## 9. Gestión de Grados
-
-### HU-029 — Listar grados escolares
-**Como** administrador,  
-**quiero** ver todos los grados escolares configurados en el sistema,  
-**para** gestionar la organización académica de la institución.
-
-**Criterios de aceptación:**
-- La página `/grades` muestra todos los grados disponibles.
-- Se muestra el nombre de cada grado y si está activo.
-- Se indica el docente director asignado a cada grado.
-
----
-
-### HU-030 — Crear un nuevo grado
-**Como** administrador,  
-**quiero** crear un nuevo grado escolar en el sistema,  
-**para** ampliar la estructura académica de la institución.
-
-**Criterios de aceptación:**
-- El formulario "Nuevo Grado" permite ingresar el nombre del grado.
-- Al guardar, el grado queda disponible para asignarse a estudiantes y docentes.
+- Se pueden modificar todos los campos del docente, incluyendo módulos asignados y rol de director.
+- Los cambios de asignaciones se aplican inmediatamente.
 - Se muestra mensaje de éxito.
 
 ---
 
-### HU-031 — Editar y eliminar grados
+### HU-036 — Desactivar o eliminar un docente
 **Como** administrador,  
-**quiero** editar o eliminar un grado existente,  
-**para** mantener actualizada la estructura académica.
+**quiero** desactivar o eliminar un docente,  
+**para** gestionar bajas del equipo docente.
 
 **Criterios de aceptación:**
-- Se puede editar el nombre del grado.
-- Se puede eliminar con confirmación previa.
-- Se muestra mensaje de éxito en cada operación.
+- Solo el administrador puede realizar estas acciones.
+- Desactivar impide el acceso sin borrar datos.
+- Eliminar requiere confirmación previa.
+- Se muestra mensaje de éxito.
 
 ---
 
 ## 10. Resultados y Reportes
 
-### HU-032 — Ver resultados de evaluaciones (Administrador/Docente)
+### HU-037 — Ver resultados de evaluaciones
 **Como** administrador o docente,  
-**quiero** ver los resultados de todos los exámenes realizados por los estudiantes,  
+**quiero** ver los resultados de todos los intentos de examen,  
 **para** evaluar el desempeño académico y tomar decisiones pedagógicas.
 
 **Criterios de aceptación:**
-- La página `/results` muestra un listado de resultados de evaluaciones.
-- Se puede filtrar por grado, módulo o componente.
-- Se muestra: nombre del estudiante, módulo, competencia, puntaje obtenido, total y porcentaje.
-- Se indica claramente si el estudiante aprobó (≥60%) o reprobó.
+- La página `/results` muestra un listado de intentos con: nombre del estudiante, número de documento, competencia evaluada, puntaje obtenido / puntaje total, porcentaje y estado (Aprobado ≥60% o Reprobado <60%).
+- Se puede buscar por nombre del estudiante o nombre de la competencia.
+- El docente solo ve resultados de los módulos y grados a su cargo.
+- El administrador ve todos los resultados.
 
 ---
 
-### HU-033 — Exportar resultados a Excel o PDF
+### HU-038 — Exportar resultados a Excel o PDF
 **Como** administrador o docente,  
 **quiero** exportar los resultados de evaluaciones a Excel o PDF,  
-**para** compartirlos o analizarlos fuera de la plataforma.
+**para** compartirlos, archivarlos o analizarlos fuera de la plataforma.
 
 **Criterios de aceptación:**
-- Existe la opción "Exportar Excel" que descarga un archivo `.xlsx` con los datos de resultados.
-- Existe la opción "Exportar PDF" que genera un reporte PDF con los datos filtrados.
-- El reporte PDF incluye: nombre del estudiante, grado, módulo, puntaje, porcentaje, fecha y estado (aprobado/reprobado).
+- Existe el botón "Exportar Excel" que descarga un archivo `.xlsx` con los datos visibles.
+- Existe el botón "Exportar PDF" que genera un reporte con encabezado institucional, filtros aplicados y tabla de resultados.
+- El reporte incluye: nombre del estudiante, grado, competencia, puntaje, porcentaje, fecha y estado.
 
 ---
 
-### HU-034 — Ver mi historial de evaluaciones (Estudiante)
+### HU-039 — Ver historial de evaluaciones (Estudiante)
 **Como** estudiante,  
 **quiero** ver el historial completo de todos los exámenes que he realizado,  
-**para** conocer mi evolución académica a lo largo del tiempo.
+**para** conocer mi evolución académica.
 
 **Criterios de aceptación:**
-- La página `/my-history` muestra todos los intentos de examen del estudiante.
-- Se muestra: módulo, competencia, fecha, puntaje obtenido, total y resultado (aprobado/reprobado).
-- Se puede descargar el historial completo en formato PDF ("Descargar Historial PDF").
+- La página `/my-history` muestra todos los intentos con: módulo, competencia, fecha, puntaje obtenido/total y resultado (Aprobado/Reprobado).
+- Si no hay historial, se muestra el mensaje "Sin historial".
+- Se puede descargar el historial completo en PDF ("Descargar Historial PDF").
 
 ---
 
-### HU-035 — Ver mis resultados (Estudiante)
+### HU-040 — Ver mis resultados (Estudiante)
 **Como** estudiante,  
 **quiero** ver el detalle de mis resultados por competencia,  
 **para** identificar mis fortalezas y áreas de mejora.
 
 **Criterios de aceptación:**
-- La página `/my-results` muestra el resultado de cada competencia evaluada.
-- Se muestra el puntaje obtenido vs. el puntaje total y el porcentaje.
-- Se indica claramente si aprobé o no cada competencia.
-- Se puede ver el detalle de cada intento ("Ver Resultado").
+- La página `/my-results` muestra: pruebas realizadas, pruebas pendientes y promedio general.
+- Por cada competencia realizada se muestra el puntaje y estado.
+- Se puede acceder al detalle de cada intento ("Ver Resultado").
+- Si no hay resultados, se muestra: "Aún no has realizado ninguna evaluación".
 
 ---
 
 ## 11. Solicitudes de Reinicio de Evaluación
 
-### HU-036 — Solicitar reinicio de evaluación (Estudiante)
+### HU-041 — Solicitar reinicio de evaluación (Estudiante)
 **Como** estudiante,  
-**quiero** solicitar al docente que me permita volver a realizar una evaluación,  
-**para** mejorar mi calificación si no la aprobé.
+**quiero** solicitar al docente que me permita repetir una evaluación,  
+**para** tener una nueva oportunidad de aprobar.
 
 **Criterios de aceptación:**
-- Desde la vista de resultados, el estudiante puede hacer clic en "Solicitar reiniciar evaluación".
-- La solicitud queda registrada con estado pendiente.
-- El estudiante recibe una notificación cuando la solicitud es aprobada o denegada.
-- Si la solicitud es aprobada, el mensaje indica: "Tu solicitud para repetir [evaluación] ha sido aprobada. Ya puedes realizar la prueba nuevamente."
+- Desde la vista de resultados, el estudiante puede hacer clic en "Solicitar reiniciar evaluación" / "Solicitar repetir prueba".
+- El formulario solicita un motivo/argumento ("Argumenta por qué deseas realizar la prueba nuevamente").
+- La solicitud queda en estado Pendiente.
+- El estudiante puede ver el estado de sus solicitudes (Pendiente / Aprobada / Denegada).
+- Si la solicitud es aprobada, recibe notificación: "Tu solicitud para repetir [evaluación] ha sido aprobada. Ya puedes realizar la prueba nuevamente."
 
 ---
 
-### HU-037 — Gestionar solicitudes de reinicio (Docente/Administrador)
+### HU-042 — Gestionar solicitudes de reinicio (Docente / Administrador)
 **Como** administrador o docente,  
-**quiero** ver y gestionar las solicitudes de reinicio de evaluación de los estudiantes,  
-**para** decidir si les permito volver a realizar el examen.
+**quiero** ver y gestionar las solicitudes de repetición enviadas por los estudiantes,  
+**para** decidir si se les concede una nueva oportunidad de evaluación.
 
 **Criterios de aceptación:**
-- La página `/retake-requests` muestra todas las solicitudes pendientes.
-- Se muestra: nombre del estudiante, grado, módulo, competencia y fecha de solicitud.
+- La página `/retake-requests` muestra todas las solicitudes con: nombre del estudiante, grado, competencia, motivo y estado.
+- Se puede filtrar por estado (Pendiente / Aprobada / Denegada).
 - El docente puede "Aprobar" o "Denegar" cada solicitud.
-- Al aprobar, el estudiante es habilitado para repetir el examen con nueva fecha de inicio.
-- Al denegar, el estudiante recibe notificación de denegación.
-- Las solicitudes procesadas cambian de estado en la lista.
+- Al aprobar: se configuran fecha de repetición, hora inicio y hora fin de la ventana de evaluación.
+- Al denegar: el estudiante recibe notificación de denegación.
+- Las solicitudes procesadas cambian de estado inmediatamente.
+- El director de curso tiene acceso a gestionar las solicitudes de los estudiantes de su grado.
 
 ---
 
 ## 12. Notificaciones
 
-### HU-038 — Recibir notificaciones del sistema
+### HU-043 — Recibir notificaciones del sistema
 **Como** usuario (administrador, docente o estudiante),  
 **quiero** recibir notificaciones dentro de la plataforma sobre eventos relevantes,  
-**para** estar informado de cambios que me afectan sin necesidad de revisar manualmente.
+**para** estar informado sin necesidad de revisar manualmente cada sección.
 
 **Criterios de aceptación:**
-- El sistema genera notificaciones para eventos como: solicitud de reinicio aprobada/denegada, habilitación de nuevo examen, etc.
+- El sistema genera notificaciones para eventos como: solicitud de reinicio aprobada o denegada, habilitación de nuevo examen, etc.
 - Las notificaciones muestran la hora en que fueron generadas.
-- Las notificaciones pueden marcarse como leídas.
 - Las notificaciones no leídas se destacan visualmente.
+- El usuario puede marcar notificaciones como leídas.
+- Las notificaciones se entregan en tiempo real mediante Supabase Realtime.
 
 ---
 
 ## 13. Configuración del Sistema
 
-### HU-039 — Gestionar banners del login
+### HU-044 — Gestionar datos institucionales
 **Como** administrador,  
-**quiero** configurar las imágenes de banner que se muestran en la pantalla de inicio de sesión,  
-**para** personalizar la presentación visual de la plataforma.
+**quiero** configurar los datos de la institución educativa en la plataforma,  
+**para** personalizar la plataforma con la identidad de la institución.
 
 **Criterios de aceptación:**
-- La página `/configuration` permite gestionar los banners del login.
-- Se pueden agregar nuevos banners con título e imagen.
-- Se puede editar el título de cada banner.
-- Se puede eliminar banners existentes.
-- Los cambios se guardan con el botón "Guardar banners".
+- La página `/configuration` permite editar: nombre de la institución, dirección, teléfono, rector, descripción/slogan (visible en login y menú) y nombre del software.
+- Los cambios se reflejan de inmediato en toda la plataforma.
 
 ---
 
-### HU-040 — Subir imágenes de banner
+### HU-045 — Personalizar la apariencia visual
 **Como** administrador,  
-**quiero** subir imágenes para los banners del login arrastrando el archivo o seleccionándolo,  
-**para** personalizar visualmente la pantalla de acceso.
+**quiero** personalizar los colores y el logo de la plataforma,  
+**para** adaptar la identidad visual a los colores institucionales.
 
 **Criterios de aceptación:**
-- Se puede arrastrar una imagen o hacer clic para seleccionarla.
-- El sistema acepta formatos de imagen estándar (JPG, PNG, etc.).
-- La imagen se previsualiza después de cargarse.
-- Se muestra confirmación de carga exitosa.
+- Se puede subir el logo institucional.
+- Se puede configurar color primario y secundario (selector visual con código HEX).
+- Se puede aplicar un degradado de colores con colores inicial y final.
+- Se puede subir una imagen personalizada para el fondo del login.
+- Los cambios se previsibilizan antes de guardar.
+
+---
+
+### HU-046 — Gestionar banners del carrusel de login
+**Como** administrador,  
+**quiero** agregar, editar y eliminar banners del carrusel en la pantalla de login,  
+**para** mostrar mensajes de bienvenida personalizados a los usuarios.
+
+**Criterios de aceptación:**
+- Se pueden agregar múltiples banners, cada uno con: título, subtítulo e imagen de fondo.
+- Se puede arrastrar la imagen o hacer clic para seleccionarla.
+- Se puede configurar la velocidad de transición del carrusel.
+- Se puede eliminar banners existentes.
+- Los banners actuales configurados incluyen: "Bienvenido Estudiante", "Portal Docente" y "Ciencia en Acción".
+- Los cambios se guardan con "Guardar banners".
+
+---
+
+### HU-047 — Gestionar etiquetas de materias
+**Como** administrador,  
+**quiero** gestionar las etiquetas de materias del sistema,  
+**para** categorizar adecuadamente el contenido según las asignaturas.
+
+**Criterios de aceptación:**
+- Se pueden agregar, editar y eliminar etiquetas de materias (ej: Biología, Química, Física, Matemáticas).
+- Las etiquetas quedan disponibles para asignarse a componentes y competencias.
 
 ---
 
 ## 14. Gestión de Permisos
 
-### HU-041 — Configurar permisos del sistema
+### HU-048 — Configurar permisos por rol
 **Como** administrador,  
-**quiero** gestionar los permisos de acceso de los diferentes roles,  
-**para** controlar qué acciones puede realizar cada tipo de usuario.
+**quiero** configurar qué acciones puede realizar cada rol en el sistema,  
+**para** adaptar los permisos a las políticas pedagógicas de la institución.
 
 **Criterios de aceptación:**
-- La página `/permissions` muestra la configuración de permisos del sistema.
-- Se pueden ajustar los permisos por rol (Administrador, Docente, Estudiante).
-- Los cambios se guardan y aplican inmediatamente.
-- Solo el administrador puede acceder a esta sección.
+- La página `/permissions` muestra una matriz de permisos por rol (Docente y Estudiante; el Administrador siempre tiene todos los permisos y no puede modificarse).
+- Los permisos configurables incluyen acciones sobre: módulos, competencias, preguntas, estudiantes y docentes (ver, crear, editar, eliminar, desactivar).
+- La matriz de permisos por defecto es:
+
+| Permiso | Docente | Estudiante |
+|---------|---------|------------|
+| modules:view | ✅ | ✅ |
+| modules:create | ❌ | ❌ |
+| modules:edit | ✅ | ❌ |
+| modules:delete | ❌ | ❌ |
+| modules:deactivate | ❌ | ❌ |
+| competencies:view | ✅ | ✅ |
+| competencies:create | ✅ | ❌ |
+| competencies:edit | ✅ | ❌ |
+| competencies:delete | ❌ | ❌ |
+| competencies:deactivate | ✅ | ❌ |
+| questions:view | ✅ | ❌ |
+| questions:create | ✅ | ❌ |
+| questions:edit | ✅ | ❌ |
+| questions:delete | ✅ | ❌ |
+| questions:deactivate | ✅ | ❌ |
+| students:view | ✅ | ❌ |
+| students:create | ✅ | ❌ |
+| students:edit | ✅ | ❌ |
+| students:delete | ❌ | ❌ |
+| students:deactivate | ❌ | ❌ |
+| teachers:view | ❌ | ❌ |
+| teachers:create | ❌ | ❌ |
+| teachers:edit | ❌ | ❌ |
+| teachers:delete | ❌ | ❌ |
+| teachers:deactivate | ❌ | ❌ |
+
+- Existe el botón "Restaurar permisos a los valores predeterminados".
 
 ---
 
 ## 15. Vista del Estudiante — Exámenes
 
-### HU-042 — Acceder a exámenes disponibles por competencia
+### HU-049 — Ver exámenes disponibles
 **Como** estudiante,  
-**quiero** ver y acceder a los exámenes que están habilitados para mi grado,  
-**para** realizar las evaluaciones dentro de los plazos establecidos.
+**quiero** ver las competencias habilitadas para evaluación en mi grado,  
+**para** planificar qué pruebas realizar.
 
 **Criterios de aceptación:**
-- El estudiante ve solo los exámenes de las competencias asignadas a su grado.
-- Se muestra el nombre del módulo, componente y competencia de cada examen.
-- Se indica si el examen ya fue realizado o está pendiente.
-- Se puede acceder al examen haciendo clic en él.
+- La página `/my-exams` muestra "Competencias disponibles para evaluar" filtradas por el grado del estudiante.
+- Se muestran: nombre del módulo, competencia, componente, fechas de disponibilidad.
+- Si no hay pruebas disponibles, se muestra: "No tienes pruebas asignadas en este momento".
+- Se puede acceder directamente a cada examen desde esta vista.
 
 ---
 
-### HU-043 — Ver resultado inmediato tras completar un examen
+### HU-050 — Realizar un examen
+**Como** estudiante,  
+**quiero** responder las preguntas de una competencia en un examen en línea,  
+**para** demostrar mis conocimientos en Ciencias Naturales y obtener una calificación.
+
+**Criterios de aceptación:**
+- El estudiante accede al examen desde `/exam/:competencyId`.
+- Se muestran todas las preguntas con sus opciones (A, B, C, D) y opcionalmente imágenes de apoyo.
+- Se lleva un contador de preguntas respondidas.
+- El sistema exige responder todas las preguntas antes de finalizar ("Debes responder todas las preguntas para finalizar").
+- Al finalizar, el sistema calcula el puntaje automáticamente (score / total_score × 100%).
+- Si ya completó la prueba, se muestra: "Ya completaste esta prueba".
+- Si la prueba no tiene preguntas, se muestra: "Esta prueba no tiene preguntas configuradas".
+
+---
+
+### HU-051 — Ver resultado inmediato tras completar un examen
 **Como** estudiante,  
 **quiero** ver mi resultado inmediatamente después de completar un examen,  
-**para** conocer mi calificación y saber si aprobé o no.
+**para** conocer mi calificación y si aprobé o no.
 
 **Criterios de aceptación:**
-- Al finalizar el examen, el sistema muestra: puntaje obtenido, puntaje total y porcentaje.
-- Se indica claramente si aprobó (≥60%) o reprobó (<60%).
-- Se muestra el detalle de respuestas correctas e incorrectas.
+- Al finalizar el examen, se muestra: puntaje obtenido, puntaje total, porcentaje y estado (Aprobado ≥60% / Reprobado <60%).
 - El resultado queda registrado en el historial del estudiante.
+- Se habilita la opción de solicitar repetición si el resultado fue reprobatorio.
 
 ---
 
-### HU-044 — Solicitar reinicio de examen desde mis resultados
+### HU-052 — Solicitar repetición desde la vista de resultados
 **Como** estudiante,  
 **quiero** solicitar desde mi página de resultados una nueva oportunidad de realizar un examen,  
 **para** mejorar mi calificación si no aprobé.
 
 **Criterios de aceptación:**
-- El botón "Solicitar reiniciar evaluación" aparece disponible tras un resultado reprobado.
-- La solicitud se envía y queda en estado pendiente.
-- El estudiante ve el estado de sus solicitudes (pendiente, aprobada, denegada).
-- Una solicitud aprobada habilita al estudiante para repetir el examen.
+- El botón "Solicitar reiniciar evaluación" está disponible para competencias reprobadas.
+- Se muestra un campo de texto para ingresar el motivo de la solicitud.
+- La solicitud queda en estado Pendiente y el estudiante puede ver su estado.
+- Una solicitud aprobada habilita al estudiante para repetir el examen en la ventana de tiempo configurada por el docente.
 
 ---
 
@@ -641,49 +797,58 @@
 |----|--------|---------------|--------|
 | HU-001 | Inicio de sesión | Todos | Autenticación |
 | HU-002 | Acceso restringido por rol | Sistema | Autenticación |
-| HU-003 | Banners de bienvenida en el login | Administrador | Configuración |
-| HU-004 | Dashboard de administrador | Administrador | Dashboard |
-| HU-005 | Dashboard del estudiante | Estudiante | Dashboard |
-| HU-006 | Listar módulos | Admin / Docente | Módulos |
-| HU-007 | Crear módulo | Administrador | Módulos |
-| HU-008 | Editar módulo | Administrador | Módulos |
-| HU-009 | Eliminar módulo | Administrador | Módulos |
-| HU-010 | Ver detalle de módulo | Admin / Docente | Módulos |
-| HU-011 | Listar componentes | Administrador | Componentes |
-| HU-012 | Crear componente | Administrador | Componentes |
-| HU-013 | Editar y eliminar componentes | Administrador | Componentes |
-| HU-014 | Ver competencias de un módulo | Admin / Docente | Competencias |
-| HU-015 | Crear competencia | Administrador | Competencias |
-| HU-016 | Crear preguntas de opción múltiple | Admin / Docente | Exámenes |
-| HU-017 | Importar preguntas desde Excel | Administrador | Exámenes |
-| HU-018 | Subir recursos multimedia | Admin / Docente | Exámenes |
-| HU-019 | Realizar un examen | Estudiante | Exámenes |
-| HU-020 | Ver mis exámenes disponibles | Estudiante | Exámenes |
-| HU-021 | Listar estudiantes | Admin / Docente | Estudiantes |
-| HU-022 | Registrar estudiante | Administrador | Estudiantes |
-| HU-023 | Importar estudiantes desde Excel | Administrador | Estudiantes |
-| HU-024 | Editar estudiante | Administrador | Estudiantes |
-| HU-025 | Eliminar estudiante | Administrador | Estudiantes |
-| HU-026 | Listar docentes | Administrador | Docentes |
-| HU-027 | Registrar docente | Administrador | Docentes |
-| HU-028 | Editar y eliminar docentes | Administrador | Docentes |
-| HU-029 | Listar grados | Administrador | Grados |
-| HU-030 | Crear grado | Administrador | Grados |
-| HU-031 | Editar y eliminar grados | Administrador | Grados |
-| HU-032 | Ver resultados de evaluaciones | Admin / Docente | Resultados |
-| HU-033 | Exportar resultados a Excel/PDF | Admin / Docente | Resultados |
-| HU-034 | Ver historial de evaluaciones | Estudiante | Resultados |
-| HU-035 | Ver mis resultados | Estudiante | Resultados |
-| HU-036 | Solicitar reinicio de evaluación | Estudiante | Reinicio |
-| HU-037 | Gestionar solicitudes de reinicio | Admin / Docente | Reinicio |
-| HU-038 | Recibir notificaciones | Todos | Notificaciones |
-| HU-039 | Gestionar banners del login | Administrador | Configuración |
-| HU-040 | Subir imágenes de banner | Administrador | Configuración |
-| HU-041 | Configurar permisos del sistema | Administrador | Permisos |
-| HU-042 | Acceder a exámenes por competencia | Estudiante | Exámenes |
-| HU-043 | Ver resultado inmediato del examen | Estudiante | Exámenes |
-| HU-044 | Solicitar reinicio desde resultados | Estudiante | Reinicio |
+| HU-003 | Personalización de pantalla de login | Administrador | Configuración |
+| HU-004 | Dashboard del administrador | Administrador | Dashboard |
+| HU-005 | Dashboard del docente | Docente | Dashboard |
+| HU-006 | Dashboard del estudiante | Estudiante | Dashboard |
+| HU-007 | Listar módulos | Admin / Docente | Módulos |
+| HU-008 | Crear módulo | Administrador | Módulos |
+| HU-009 | Editar módulo | Admin / Docente | Módulos |
+| HU-010 | Desactivar / Activar módulo | Admin / Docente | Módulos |
+| HU-011 | Eliminar módulo | Administrador | Módulos |
+| HU-012 | Ver detalle de módulo | Admin / Docente | Módulos |
+| HU-013 | Listar competencias de un módulo | Admin / Docente | Competencias |
+| HU-014 | Crear competencia | Admin / Docente | Competencias |
+| HU-015 | Editar y desactivar competencia | Admin / Docente | Competencias |
+| HU-016 | Eliminar competencia | Administrador | Competencias |
+| HU-017 | Ver preguntas de una competencia | Admin / Docente | Preguntas |
+| HU-018 | Crear pregunta de opción múltiple | Admin / Docente | Preguntas |
+| HU-019 | Importar preguntas desde Excel | Administrador | Preguntas |
+| HU-020 | Editar y eliminar preguntas | Admin / Docente | Preguntas |
+| HU-021 | Listar componentes | Administrador | Componentes |
+| HU-022 | Crear componente | Administrador | Componentes |
+| HU-023 | Editar y eliminar componentes | Administrador | Componentes |
+| HU-024 | Listar grados académicos | Administrador | Grados |
+| HU-025 | Crear grado | Administrador | Grados |
+| HU-026 | Editar y eliminar grados | Administrador | Grados |
+| HU-027 | Listar estudiantes | Admin / Docente | Estudiantes |
+| HU-028 | Registrar estudiante | Admin / Docente | Estudiantes |
+| HU-029 | Importar estudiantes desde Excel | Administrador | Estudiantes |
+| HU-030 | Editar estudiante | Admin / Docente | Estudiantes |
+| HU-031 | Desactivar o eliminar estudiante | Administrador | Estudiantes |
+| HU-032 | Restablecer contraseña de estudiante | Admin / Docente | Estudiantes |
+| HU-033 | Listar docentes | Administrador | Docentes |
+| HU-034 | Registrar docente | Administrador | Docentes |
+| HU-035 | Editar docente | Administrador | Docentes |
+| HU-036 | Desactivar o eliminar docente | Administrador | Docentes |
+| HU-037 | Ver resultados de evaluaciones | Admin / Docente | Resultados |
+| HU-038 | Exportar resultados a Excel/PDF | Admin / Docente | Resultados |
+| HU-039 | Ver historial de evaluaciones | Estudiante | Resultados |
+| HU-040 | Ver mis resultados | Estudiante | Resultados |
+| HU-041 | Solicitar reinicio de evaluación | Estudiante | Reinicio |
+| HU-042 | Gestionar solicitudes de reinicio | Admin / Docente | Reinicio |
+| HU-043 | Recibir notificaciones del sistema | Todos | Notificaciones |
+| HU-044 | Gestionar datos institucionales | Administrador | Configuración |
+| HU-045 | Personalizar apariencia visual | Administrador | Configuración |
+| HU-046 | Gestionar banners del login | Administrador | Configuración |
+| HU-047 | Gestionar etiquetas de materias | Administrador | Configuración |
+| HU-048 | Configurar permisos por rol | Administrador | Permisos |
+| HU-049 | Ver exámenes disponibles | Estudiante | Exámenes |
+| HU-050 | Realizar un examen | Estudiante | Exámenes |
+| HU-051 | Ver resultado inmediato del examen | Estudiante | Exámenes |
+| HU-052 | Solicitar repetición desde resultados | Estudiante | Exámenes |
 
 ---
 
-*Documento generado mediante análisis funcional de la plataforma EduScience (https://edu-science-jade.vercel.app/)*
+*Documento generado mediante análisis funcional de la plataforma EduScience (https://edu-science-jade.vercel.app/), incluyendo exploración autenticada con usuario administrador.*  
+*Institución configurada: Institución Educativa Bello Horizonte — © 2026 Nikol Riveros, Leonel O Torres.*
